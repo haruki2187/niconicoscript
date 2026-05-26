@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/api/comment",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"text\":\"Lambdaからこんにちは\",\"color\":\"#ff8800\"}"
+}

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コメント投稿 — nicoJS</title>
+  <style>
+    body {
+      margin: 24px;
+      background: #1a1a1a;
+      color: #f0f0f0;
+      font-family: system-ui, sans-serif;
+    }
+    #form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 640px;
+    }
+    #text {
+      min-height: 80px;
+      padding: 16px;
+      font-size: 16px;
+      line-height: 1.5;
+      border: 1px solid #404040;
+      border-radius: 8px;
+      background: #2a2a2a;
+      color: #f0f0f0;
+      resize: vertical;
+    }
+    #text:focus {
+      outline: 2px solid #6080c0;
+      outline-offset: 0;
+    }
+    #btn-send {
+      align-self: flex-start;
+      min-width: 120px;
+      height: 40px;
+      padding: 0 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #3d6cb5;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    #btn-send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #btn-send:hover:not(:disabled) {
+      background: #4a7bc8;
+    }
+    #status {
+      min-height: 24px;
+      font-size: 14px;
+      color: #a0a0a0;
+    }
+    .color-field {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+    }
+    .color-field label {
+      font-size: 16px;
+      min-width: 64px;
+    }
+    #comment-color {
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      border: 2px solid #404040;
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+    }
+    #comment-color::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    #comment-color::-webkit-color-swatch {
+      border: none;
+      border-radius: 4px;
+    }
+    #comment-color-hex {
+      font-size: 16px;
+      font-family: ui-monospace, monospace;
+      color: #c0c0c0;
+      min-width: 72px;
+    }
+  </style>
+</head>
+<body>
+  <form id="form" onsubmit="return false">
+    <textarea id="text" rows="3" maxlength="200" placeholder="コメント" autocomplete="off"></textarea>
+    <div class="color-field">
+      <label for="comment-color">文字色</label>
+      <input type="color" id="comment-color" value="#ffffff" title="カラーパレットで色を選ぶ">
+      <span id="comment-color-hex">#ffffff</span>
+    </div>
+    <button type="button" id="btn-send">送信</button>
+    <p id="status" aria-live="polite"></p>
+  </form>
+  <script src="post.js"></script>
+</body>
+</html>
