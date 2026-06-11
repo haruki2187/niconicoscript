@@ -1,0 +1,171 @@
+# niconicoscript — Lambda Web Adapter + DynamoDB
+#
+# デプロイ手順:
+# 1. スタック初回作成（ECR / DynamoDB / IAM / Lambda 骨格）
+#    aws cloudformation deploy \
+#      --template-file infra/cloudformation.yaml \
+#      --stack-name niconicoscript \
+#      --capabilities CAPABILITY_NAMED_IAM \
+#      --parameter-overrides ImageUri=public.ecr.aws/lambda/nodejs:22
+# 2. ECR にイメージを push（Outputs の EcrRepositoryUri を使用）
+#    aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+#    docker build -t niconicoscript .
+#    docker tag niconicoscript:latest <EcrRepositoryUri>:latest
+#    docker push <EcrRepositoryUri>:latest
+# 3. Lambda の ImageUri を更新
+#    aws cloudformation deploy \
+#      --template-file infra/cloudformation.yaml \
+#      --stack-name niconicoscript \
+#      --capabilities CAPABILITY_NAMED_IAM \
+#      --parameter-overrides ImageUri=<EcrRepositoryUri>:latest
+#
+# 本番では CommentsTable に DeletionPolicy: Retain を付与することを推奨。
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: niconicoscript on Lambda Web Adapter with DynamoDB comment storage
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: niconicoscript
+    Description: Resource name prefix
+  ImageUri:
+    Type: String
+    Description: ECR image URI (e.g. 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/niconicoscript:latest)
+  LambdaMemorySize:
+    Type: Number
+    Default: 512
+    MinValue: 128
+    MaxValue: 10240
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 900
+
+Resources:
+  CommentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-comments'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: commentId
+          AttributeType: N
+        - AttributeName: scope
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: N
+        - AttributeName: pendingKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: commentId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ByCreatedAt
+          KeySchema:
+            - AttributeName: scope
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: PendingComments
+          KeySchema:
+            - AttributeName: pendingKey
+              KeyType: HASH
+            - AttributeName: commentId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ProjectName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EmptyOnDelete: true
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDbCommentsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt CommentsTable.Arn
+                  - !Sub '${CommentsTable.Arn}/index/*'
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref ProjectName
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Environment:
+        Variables:
+          PORT: '3000'
+          COMMENTS_TABLE_NAME: !Ref CommentsTable
+      Architectures:
+        - x86_64
+
+  LambdaFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt LambdaFunction.Arn
+      AuthType: NONE
+      Cors:
+        AllowCredentials: false
+        AllowHeaders:
+          - Content-Type
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowOrigins:
+          - '*'
+
+  LambdaFunctionUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: Lambda Function URL for the app
+    Value: !GetAtt LambdaFunctionUrl.FunctionUrl
+  EcrRepositoryUri:
+    Description: Push container images here before updating ImageUri
+    Value: !GetAtt EcrRepository.RepositoryUri
+  CommentsTableName:
+    Description: DynamoDB table for comments
+    Value: !Ref CommentsTable
+  LambdaFunctionName:
+    Description: Lambda function name
+    Value: !Ref LambdaFunction

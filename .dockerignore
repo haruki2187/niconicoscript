@@ -1,0 +1,9 @@
+.git
+.gitignore
+.cursor
+node_modules
+npm-debug.log*
+.env
+.env.*
+*.md
+api-gateway-proxy-event.sample.json

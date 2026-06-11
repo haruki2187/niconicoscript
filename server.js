@@ -4,6 +4,7 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const { URL } = require('url')
+const commentStore = require('./lib/comment-store')
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10)
 const ROOT = __dirname
@@ -16,13 +17,6 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-/**
- * 未配信コメント。GET /api/comments で返した分はキューから削除する（再送しない）。
- * @type {{ id: number, text: string, color: string }[]}
- */
-const comments = []
-let nextId = 1
 
 /**
  * リクエストボディを文字列として読み取る。
@@ -70,12 +64,12 @@ const normalizePayload = (rawBody) => {
 }
 
 /**
- * コメントをキューに追加する（本番では Lambda が DB 等へ保存する想定）。
+ * 投稿ペイロードを検証しストアへ保存する。
  *
  * @param {object} obj 入力オブジェクト。text は必須。
- * @returns {{ ok: true, id: number } | { ok: false, error: string }}
+ * @returns {Promise<{ ok: true, id: number } | { ok: false, error: string }>}
  */
-const addCommentFromPayload = (obj) => {
+const addCommentFromPayload = async (obj) => {
   if (!obj || typeof obj.text !== 'string' || !obj.text.trim()) {
     return { ok: false, error: 'text is required (non-empty string)' }
   }
@@ -83,31 +77,8 @@ const addCommentFromPayload = (obj) => {
     typeof obj.color === 'string' && obj.color.trim() !== ''
       ? obj.color.trim()
       : DEFAULT_COMMENT_COLOR
-  const entry = {
-    id: nextId++,
-    text: obj.text.trim(),
-    color,
-  }
-  comments.push(entry)
-  return { ok: true, id: entry.id }
-}
-
-/**
- * after より大きい id のコメントを取り出し、キューから除去する。
- *
- * @param {number} after この id 以下は対象外。
- * @returns {{ id: number, text: string, color: string }[]}
- */
-const takeCommentsAfter = (after) => {
-  const batch = comments.filter((c) => c.id > after)
-  if (batch.length === 0) {
-    return batch
-  }
-  const deliveredIds = new Set(batch.map((c) => c.id))
-  const kept = comments.filter((c) => !deliveredIds.has(c.id))
-  comments.length = 0
-  comments.push(...kept)
-  return batch
+  const { id } = await commentStore.addComment(obj.text.trim(), color)
+  return { ok: true, id }
 }
 
 /**
@@ -155,6 +126,8 @@ const resolveStaticPath = (pathname) => {
     ['/post.html', path.join(ROOT, 'post.html')],
     ['/post.js', path.join(ROOT, 'post.js')],
     ['/view', path.join(ROOT, 'index.html')],
+    ['/history', path.join(ROOT, 'history.html')],
+    ['/history.js', path.join(ROOT, 'history.js')],
     ['/niconico.js', path.join(ROOT, 'niconico.js')],
     ['/node_modules/nicojs/lib/nico.js', path.join(ROOT, 'node_modules', 'nicojs', 'lib', 'nico.js')],
   ])
@@ -199,10 +172,30 @@ const requestUrl = (req) => {
 /**
  * @param {http.ServerResponse} res
  * @param {URL} u
+ * @returns {Promise<void>}
  */
-const handleGetComments = (res, u) => {
-  const batch = takeCommentsAfter(parseAfterQuery(u.searchParams.get('after')))
-  json(res, 200, { comments: batch })
+const handleGetComments = async (res, u) => {
+  try {
+    const batch = await commentStore.takePendingAfter(parseAfterQuery(u.searchParams.get('after')))
+    json(res, 200, { comments: batch })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    json(res, 500, { error: message })
+  }
+}
+
+/**
+ * @param {http.ServerResponse} res
+ * @returns {Promise<void>}
+ */
+const handleGetCommentHistory = async (res) => {
+  try {
+    const comments = await commentStore.listHistory()
+    json(res, 200, { comments })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    json(res, 500, { error: message })
+  }
 }
 
 /**
@@ -218,7 +211,7 @@ const handlePostComment = async (req, res) => {
       json(res, 400, { error: 'invalid JSON' })
       return
     }
-    const result = addCommentFromPayload(obj)
+    const result = await addCommentFromPayload(obj)
     if (!result.ok) {
       json(res, 400, { error: result.error })
       return
@@ -257,7 +250,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (method === 'GET' && pathname === '/api/comments') {
-    handleGetComments(res, u)
+    await handleGetComments(res, u)
+    return
+  }
+
+  if (method === 'GET' && pathname === '/api/comments/history') {
+    await handleGetCommentHistory(res)
     return
   }
 
@@ -275,7 +273,10 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
+  const backend = commentStore.isDynamoDbEnabled() ? 'DynamoDB' : 'in-memory'
   console.log(`Comment post http://127.0.0.1:${PORT}/`)
   console.log(`Viewer http://127.0.0.1:${PORT}/view`)
+  console.log(`History http://127.0.0.1:${PORT}/history`)
+  console.log(`Storage backend: ${backend}`)
   console.log('POST JSON to /api/comment — example: {"text":"hello","color":"#ff8800"}')
 })
