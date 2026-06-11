@@ -22,7 +22,7 @@
 # 本番では CommentsTable に DeletionPolicy: Retain を付与することを推奨。
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: niconicoscript on Lambda Web Adapter with DynamoDB comment storage
+Description: ニコ生風のコメント表示 テスト
 
 Parameters:
   ProjectName:
