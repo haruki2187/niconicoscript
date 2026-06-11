@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コメント一覧（全件） — nicoJS</title>
+  <style>
+    body {
+      margin: 24px;
+      background: #1a1a1a;
+      color: #f0f0f0;
+      font-family: system-ui, sans-serif;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    nav {
+      display: flex;
+      gap: 16px;
+    }
+    nav a {
+      color: #8ab4f8;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    #meta {
+      margin: 0 0 16px;
+      font-size: 14px;
+      color: #a0a0a0;
+    }
+    #status {
+      min-height: 24px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: #a0a0a0;
+    }
+    #actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    #comment-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 960px;
+    }
+    .comment-item {
+      display: grid;
+      grid-template-columns: 140px 32px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid #404040;
+      border-radius: 8px;
+      background: #2a2a2a;
+    }
+    .comment-time {
+      font-size: 13px;
+      color: #a0a0a0;
+      font-family: ui-monospace, monospace;
+    }
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid #606060;
+      margin-top: 2px;
+    }
+    .comment-text {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .empty {
+      color: #a0a0a0;
+      font-size: 14px;
+    }
+    #btn-refresh,
+    #btn-export-csv {
+      min-width: 96px;
+      height: 36px;
+      padding: 0 16px;
+      font-size: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #btn-refresh {
+      background: #3d6cb5;
+      color: #ffffff;
+    }
+    #btn-refresh:hover {
+      background: #4a7bc8;
+    }
+    #btn-export-csv {
+      background: #2d6a4f;
+      color: #ffffff;
+    }
+    #btn-export-csv:hover:not(:disabled) {
+      background: #3a7d5f;
+    }
+    #btn-refresh:disabled,
+    #btn-export-csv:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>コメント一覧（全件）</h1>
+    <nav>
+      <a href="/">投稿</a>
+      <a href="/view">ライブ表示</a>
+      <a href="/history">直近一覧</a>
+    </nav>
+  </header>
+  <p id="meta">全件（新しい順）</p>
+  <p id="status" aria-live="polite">読み込み中…</p>
+  <div id="actions">
+    <button type="button" id="btn-refresh">再読み込み</button>
+    <button type="button" id="btn-export-csv" disabled>CSVエクスポート</button>
+  </div>
+  <ul id="comment-list"></ul>
+  <script src="/history-all.js"></script>
+</body>
+</html>

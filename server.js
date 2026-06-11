@@ -127,7 +127,9 @@ const resolveStaticPath = (pathname) => {
     ['/post.js', path.join(ROOT, 'post.js')],
     ['/view', path.join(ROOT, 'index.html')],
     ['/history', path.join(ROOT, 'history.html')],
+    ['/history/all', path.join(ROOT, 'history-all.html')],
     ['/history.js', path.join(ROOT, 'history.js')],
+    ['/history-all.js', path.join(ROOT, 'history-all.js')],
     ['/niconico.js', path.join(ROOT, 'niconico.js')],
     ['/node_modules/nicojs/lib/nico.js', path.join(ROOT, 'node_modules', 'nicojs', 'lib', 'nico.js')],
   ])
@@ -199,6 +201,20 @@ const handleGetCommentHistory = async (res) => {
 }
 
 /**
+ * @param {http.ServerResponse} res
+ * @returns {Promise<void>}
+ */
+const handleGetCommentHistoryAll = async (res) => {
+  try {
+    const comments = await commentStore.listAllHistory()
+    json(res, 200, { comments })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    json(res, 500, { error: message })
+  }
+}
+
+/**
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse} res
  * @returns {Promise<void>}
@@ -254,6 +270,11 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (method === 'GET' && pathname === '/api/comments/history/all') {
+    await handleGetCommentHistoryAll(res)
+    return
+  }
+
   if (method === 'GET' && pathname === '/api/comments/history') {
     await handleGetCommentHistory(res)
     return
@@ -277,6 +298,7 @@ server.listen(PORT, () => {
   console.log(`Comment post http://127.0.0.1:${PORT}/`)
   console.log(`Viewer http://127.0.0.1:${PORT}/view`)
   console.log(`History http://127.0.0.1:${PORT}/history`)
+  console.log(`History (all) http://127.0.0.1:${PORT}/history/all`)
   console.log(`Storage backend: ${backend}`)
   console.log('POST JSON to /api/comment — example: {"text":"hello","color":"#ff8800"}')
 })
