@@ -11,4 +11,5 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-CMD ["node", "server.js"]
+# AWS 管理ベースイメージは CMD を handler 名として解釈するため ENTRYPOINT で起動する
+ENTRYPOINT ["node", "server.js"]

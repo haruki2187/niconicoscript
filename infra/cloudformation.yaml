@@ -1,23 +1,23 @@
 # niconicoscript — Lambda Web Adapter + DynamoDB
 #
 # デプロイ手順:
-# 1. スタック初回作成（ECR / DynamoDB / IAM / Lambda 骨格）
+# 1. スタック初回作成（ECR / DynamoDB / IAM のみ）
 #    aws cloudformation deploy \
 #      --template-file infra/cloudformation.yaml \
 #      --stack-name niconicoscript \
 #      --capabilities CAPABILITY_NAMED_IAM \
-#      --parameter-overrides ImageUri=public.ecr.aws/lambda/nodejs:22
+#      --parameter-overrides BootstrapOnly=true
 # 2. ECR にイメージを push（Outputs の EcrRepositoryUri を使用）
 #    aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
 #    docker build -t niconicoscript .
 #    docker tag niconicoscript:latest <EcrRepositoryUri>:latest
 #    docker push <EcrRepositoryUri>:latest
-# 3. Lambda の ImageUri を更新
+# 3. Lambda と API Gateway HTTP API をデプロイ
 #    aws cloudformation deploy \
 #      --template-file infra/cloudformation.yaml \
 #      --stack-name niconicoscript \
 #      --capabilities CAPABILITY_NAMED_IAM \
-#      --parameter-overrides ImageUri=<EcrRepositoryUri>:latest
+#      --parameter-overrides BootstrapOnly=false ImageUri=<EcrRepositoryUri>:latest
 #
 # 本番では CommentsTable に DeletionPolicy: Retain を付与することを推奨。
 
@@ -29,9 +29,17 @@ Parameters:
     Type: String
     Default: niconicoscript
     Description: Resource name prefix
+  BootstrapOnly:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: true のとき ECR / DynamoDB / IAM のみ作成（初回の骨格用）
   ImageUri:
     Type: String
-    Description: ECR image URI (e.g. 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/niconicoscript:latest)
+    Default: ''
+    Description: ECR image URI（BootstrapOnly=false のとき必須）
   LambdaMemorySize:
     Type: Number
     Default: 512
@@ -42,6 +50,9 @@ Parameters:
     Default: 30
     MinValue: 1
     MaxValue: 900
+
+Conditions:
+  DeployApplication: !Equals [!Ref BootstrapOnly, 'false']
 
 Resources:
   CommentsTable:
@@ -117,6 +128,7 @@ Resources:
 
   LambdaFunction:
     Type: AWS::Lambda::Function
+    Condition: DeployApplication
     Properties:
       FunctionName: !Ref ProjectName
       PackageType: Image
@@ -132,34 +144,62 @@ Resources:
       Architectures:
         - x86_64
 
-  LambdaFunctionUrl:
-    Type: AWS::Lambda::Url
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Condition: DeployApplication
     Properties:
-      TargetFunctionArn: !GetAtt LambdaFunction.Arn
-      AuthType: NONE
-      Cors:
-        AllowCredentials: false
-        AllowHeaders:
-          - Content-Type
-        AllowMethods:
-          - GET
-          - POST
-          - OPTIONS
-        AllowOrigins:
-          - '*'
+      Name: !Sub '${ProjectName}-http-api'
+      ProtocolType: HTTP
+      Description: Public HTTP API for niconicoscript
 
-  LambdaFunctionUrlPermission:
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Condition: DeployApplication
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub >-
+        arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  HttpApiDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Condition: DeployApplication
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub integrations/${HttpApiIntegration}
+
+  HttpApiProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Condition: DeployApplication
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: ANY /{proxy+}
+      Target: !Sub integrations/${HttpApiIntegration}
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Condition: DeployApplication
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  HttpApiInvokePermission:
     Type: AWS::Lambda::Permission
+    Condition: DeployApplication
     Properties:
       FunctionName: !Ref LambdaFunction
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*
 
 Outputs:
-  FunctionUrl:
-    Description: Lambda Function URL for the app
-    Value: !GetAtt LambdaFunctionUrl.FunctionUrl
+  ApiUrl:
+    Condition: DeployApplication
+    Description: Public API Gateway HTTP API endpoint
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
   EcrRepositoryUri:
     Description: Push container images here before updating ImageUri
     Value: !GetAtt EcrRepository.RepositoryUri
@@ -167,5 +207,6 @@ Outputs:
     Description: DynamoDB table for comments
     Value: !Ref CommentsTable
   LambdaFunctionName:
+    Condition: DeployApplication
     Description: Lambda function name
     Value: !Ref LambdaFunction
