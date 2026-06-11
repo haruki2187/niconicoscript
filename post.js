@@ -94,7 +94,11 @@ if (submitBtn) {
 }
 
 textInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) {
+    return
+  }
+  // IME 確定の Enter と区別するため、修飾キー付きのみ送信する
+  if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
     void postComment()
   }
