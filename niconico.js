@@ -9,6 +9,7 @@ const NICO_OPTIONS = {
   height: 1080,
   font_size: 60,
   color: '#fff',
+  speed: 6,
 }
 
 /** コメント文字の 1px 輪郭（nicoJS 既定のぼかし影を上書き）。 */
